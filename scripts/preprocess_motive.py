@@ -173,7 +173,6 @@ def joint_axis_parent(urdf_path, joint_name):
             break
     if j is None:
         raise KeyError(f"URDF에서 joint '{joint_name}' 못 찾음")
-
     axis_el = j.find("axis")
     axis = np.array([1.0, 0.0, 0.0])
     if axis_el is not None and axis_el.attrib.get("xyz"):
@@ -331,7 +330,7 @@ def main():
         "dof_names": np.array(cols, dtype=object),
     }
     np.save("../assets/amp/g1_amp_traj.npy", traj, allow_pickle=True)
-    print(f"[OK] Processed {len(t)} frames. saved: g1_amp_traj.npy")
+    print(f"[OK] URDF-based 12DOF processing complete.")
 
 if __name__ == "__main__":
     main()

@@ -38,9 +38,11 @@ from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, get_axis_para
 
 from ..base.vec_task import VecTask
 
-DOF_BODY_IDS = [1, 2, 3, 4, 6, 7, 9, 10, 11, 12]
+DOF_BODY_IDS = [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13]
 DOF_OFFSETS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-NUM_OBS = 1 + 6 + 3 + 3 + 12 + 12 + 6 # [root_h, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel, key_body_pos]
+
+# 계산: root(13) + dof_pos(12) + dof_vel(12) + key_body(6) = 43
+NUM_OBS = 43
 NUM_ACTIONS = 12
 
 
@@ -72,6 +74,8 @@ class HumanoidAMPBase(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
         
+        self._initial_dof_pos = torch.zeros_like(self._dof_pos, device=self.device, dtype=torch.float)
+        self._initial_dof_vel = torch.zeros_like(self._dof_vel, device=self.device, dtype=torch.float)
         dt = self.cfg["sim"]["dt"]
         self.dt = self.control_freq_inv * dt
         
@@ -190,17 +194,17 @@ class HumanoidAMPBase(VecTask):
         motor_efforts = [prop.motor_effort for prop in actuator_props]
         
         # create force sensors at the feet
-        right_foot_idx = self.gym.find_asset_rigid_body_index(humanoid_asset, "right_foot")
-        left_foot_idx = self.gym.find_asset_rigid_body_index(humanoid_asset, "left_foot")
+        right_foot_idx = self.gym.find_asset_rigid_body_index(humanoid_asset, "right_ankle_roll_link")
+        left_foot_idx = self.gym.find_asset_rigid_body_index(humanoid_asset, "left_ankle_roll_link")
+        
         sensor_pose = gymapi.Transform()
-
         self.gym.create_asset_force_sensor(humanoid_asset, right_foot_idx, sensor_pose)
         self.gym.create_asset_force_sensor(humanoid_asset, left_foot_idx, sensor_pose)
 
         self.max_motor_effort = max(motor_efforts)
         self.motor_efforts = to_torch(motor_efforts, device=self.device)
 
-        self.torso_index = 0
+        self.torso_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.humanoid_handles[0], "pelvis")
         self.num_bodies = self.gym.get_asset_rigid_body_count(humanoid_asset)
         self.num_dof = self.gym.get_asset_dof_count(humanoid_asset)
         self.num_joints = self.gym.get_asset_joint_count(humanoid_asset)
