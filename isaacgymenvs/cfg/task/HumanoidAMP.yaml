@@ -25,16 +25,14 @@ env:
 
   # animation files to learn from
   # these motions should use hyperparameters from HumanoidAMPPPO.yaml
-  #motion_file: "amp_humanoid_walk.npy"
-  motion_file: "amp_humanoid_run.npy"
-  #motion_file: "amp_humanoid_dance.npy"
+  motion_file: "g1_amp_traj.npy"
 
   # these motions should use hyperparameters from HumanoidAMPPPOLowGP.yaml
   #motion_file: "amp_humanoid_hop.npy"
   #motion_file: "amp_humanoid_backflip.npy"
 
   asset:
-    assetFileName: "mjcf/amp_humanoid.xml"
+    assetFileName: "urdf/g1_12dof.urdf"
 
   plane:
     staticFriction: 1.0

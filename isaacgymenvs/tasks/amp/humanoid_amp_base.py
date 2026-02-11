@@ -38,13 +38,13 @@ from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, get_axis_para
 
 from ..base.vec_task import VecTask
 
-DOF_BODY_IDS = [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14]
-DOF_OFFSETS = [0, 3, 6, 9, 10, 13, 14, 17, 18, 21, 24, 25, 28]
-NUM_OBS = 13 + 52 + 28 + 12 # [root_h, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel, key_body_pos]
-NUM_ACTIONS = 28
+DOF_BODY_IDS = [1, 2, 3, 4, 6, 7, 9, 10, 11, 12]
+DOF_OFFSETS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+NUM_OBS = 1 + 6 + 3 + 3 + 12 + 12 + 6 # [root_h, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel, key_body_pos]
+NUM_ACTIONS = 12
 
 
-KEY_BODY_NAMES = ["right_hand", "left_hand", "right_foot", "left_foot"]
+KEY_BODY_NAMES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 
 class HumanoidAMPBase(VecTask):
 
@@ -260,32 +260,28 @@ class HumanoidAMPBase(VecTask):
         return
 
     def _build_pd_action_offset_scale(self):
-        num_joints = len(DOF_OFFSETS) - 1
-        
+        num_joints = len(DOF_OFFSETS) - 1  # 12개 관절
+    
         lim_low = self.dof_limits_lower.cpu().numpy()
         lim_high = self.dof_limits_upper.cpu().numpy()
 
+    # G1는 모든 관절이 1-DOF revolute이므로 spherical joint 처리 불필요
         for j in range(num_joints):
             dof_offset = DOF_OFFSETS[j]
-            dof_size = DOF_OFFSETS[j + 1] - DOF_OFFSETS[j]
+            dof_size = DOF_OFFSETS[j + 1] - DOF_OFFSETS[j]  # 항상 1
 
-            if (dof_size == 3):
-                lim_low[dof_offset:(dof_offset + dof_size)] = -np.pi
-                lim_high[dof_offset:(dof_offset + dof_size)] = np.pi
+        # 모든 관절이 1-DOF
+            curr_low = lim_low[dof_offset]
+            curr_high = lim_high[dof_offset]
+            curr_mid = 0.5 * (curr_high + curr_low)
+        
+        # 관절 한계를 약간 넘어서도록 action range 확장
+            curr_scale = 0.7 * (curr_high - curr_low)
+            curr_low = curr_mid - curr_scale
+            curr_high = curr_mid + curr_scale
 
-            elif (dof_size == 1):
-                curr_low = lim_low[dof_offset]
-                curr_high = lim_high[dof_offset]
-                curr_mid = 0.5 * (curr_high + curr_low)
-                
-                # extend the action range to be a bit beyond the joint limits so that the motors
-                # don't lose their strength as they approach the joint limits
-                curr_scale = 0.7 * (curr_high - curr_low)
-                curr_low = curr_mid - curr_scale
-                curr_high = curr_mid + curr_scale
-
-                lim_low[dof_offset] = curr_low
-                lim_high[dof_offset] =  curr_high
+            lim_low[dof_offset] = curr_low
+            lim_high[dof_offset] = curr_high
 
         self._pd_action_offset = 0.5 * (lim_high + lim_low)
         self._pd_action_scale = 0.5 * (lim_high - lim_low)
@@ -462,34 +458,24 @@ class HumanoidAMPBase(VecTask):
 @torch.jit.script
 def dof_to_obs(pose):
     # type: (Tensor) -> Tensor
-    #dof_obs_size = 64
-    #dof_offsets = [0, 3, 6, 9, 12, 13, 16, 19, 20, 23, 24, 27, 30, 31, 34]
-    dof_obs_size = 52
-    dof_offsets = [0, 3, 6, 9, 10, 13, 14, 17, 18, 21, 24, 25, 28]
-    num_joints = len(dof_offsets) - 1
+    # G1: 모든 관절이 1-DOF revolute joint
+    # 12개 관절 각도를 그대로 반환 (변환 불필요)
+    # 기존 AMP humanoid는 spherical joint(3-DOF)를 6차원으로 변환했지만,
+    # G1는 모두 단일 revolute이므로 그대로 사용
+    return pose  # (batch, 12) -> (batch, 12)
 
-    dof_obs_shape = pose.shape[:-1] + (dof_obs_size,)
-    dof_obs = torch.zeros(dof_obs_shape, device=pose.device)
-    dof_obs_offset = 0
 
-    for j in range(num_joints):
-        dof_offset = dof_offsets[j]
-        dof_size = dof_offsets[j + 1] - dof_offsets[j]
-        joint_pose = pose[:, dof_offset:(dof_offset + dof_size)]
+@torch.jit.script
+def dof_to_obs(pose):
+    # type: (Tensor) -> Tensor
+    # G1: 모든 관절이 1-DOF revolute joint
+    # 12개 관절 각도를 그대로 반환 (변환 불필요)
+    # 기존 AMP humanoid는 spherical joint(3-DOF)를 6차원으로 변환했지만,
+    # G1는 모두 단일 revolute이므로 그대로 사용
+    return pose  # (batch, 12) -> (batch, 12)
 
-        # assume this is a spherical joint
-        if (dof_size == 3):
-            joint_pose_q = exp_map_to_quat(joint_pose)
-            joint_dof_obs = quat_to_tan_norm(joint_pose_q)
-            dof_obs_size = 6
-        else:
-            joint_dof_obs = joint_pose
-            dof_obs_size = 1
 
-        dof_obs[:, dof_obs_offset:(dof_obs_offset + dof_obs_size)] = joint_dof_obs
-        dof_obs_offset += dof_obs_size
-
-    return dof_obs
+# ==================== compute_humanoid_observations 함수 수정 ====================
 
 @torch.jit.script
 def compute_humanoid_observations(root_states, dof_pos, dof_vel, key_body_pos, local_root_obs):
@@ -516,15 +502,23 @@ def compute_humanoid_observations(root_states, dof_pos, dof_vel, key_body_pos, l
     
     heading_rot_expand = heading_rot.unsqueeze(-2)
     heading_rot_expand = heading_rot_expand.repeat((1, local_key_body_pos.shape[1], 1))
-    flat_end_pos = local_key_body_pos.view(local_key_body_pos.shape[0] * local_key_body_pos.shape[1], local_key_body_pos.shape[2])
+    flat_end_pos = local_key_body_pos.view(local_key_body_pos.shape[0] * local_key_body_pos.shape[1], 
+                                            local_key_body_pos.shape[2])
     flat_heading_rot = heading_rot_expand.view(heading_rot_expand.shape[0] * heading_rot_expand.shape[1], 
                                                heading_rot_expand.shape[2])
     local_end_pos = my_quat_rotate(flat_heading_rot, flat_end_pos)
-    flat_local_key_pos = local_end_pos.view(local_key_body_pos.shape[0], local_key_body_pos.shape[1] * local_key_body_pos.shape[2])
+    flat_local_key_pos = local_end_pos.view(local_key_body_pos.shape[0], 
+                                            local_key_body_pos.shape[1] * local_key_body_pos.shape[2])
 
+    # G1: dof_pos는 12차원 그대로 사용 (변환 불필요)
     dof_obs = dof_to_obs(dof_pos)
 
-    obs = torch.cat((root_h, root_rot_obs, local_root_vel, local_root_ang_vel, dof_obs, dof_vel, flat_local_key_pos), dim=-1)
+    # 최종 observation 조합
+    # root_h(1) + root_rot_obs(6) + local_root_vel(3) + local_root_ang_vel(3) 
+    # + dof_obs(12) + dof_vel(12) + flat_local_key_pos(12)
+    # = 49 차원
+    obs = torch.cat((root_h, root_rot_obs, local_root_vel, local_root_ang_vel, 
+                     dof_obs, dof_vel, flat_local_key_pos), dim=-1)
     return obs
 
 @torch.jit.script
