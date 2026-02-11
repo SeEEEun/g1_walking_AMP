@@ -7,8 +7,8 @@ import xml.etree.ElementTree as ET
 import os
 
 # 파일 경로 설정 (본인의 환경에 맞게 수정)
-CSV_PATH = "g1_walking.csv"
-URDF_PATH = "g1_12dof.urdf"
+CSV_PATH = "../data/g1_walking.csv"
+URDF_PATH = "../assets/g1_12dof.urdf"
 
 # Motive(Y-up) -> Isaac(Z-up) 변환 (Motive: x,y,z -> Isaac: x, z, -y)
 APPLY_YUP_TO_ZUP = True
@@ -330,7 +330,7 @@ def main():
         "dof_vel": dq_dof.astype(np.float32),
         "dof_names": np.array(cols, dtype=object),
     }
-    np.save("g1_amp_traj.npy", traj, allow_pickle=True)
+    np.save("../assets/amp/g1_amp_traj.npy", traj, allow_pickle=True)
     print(f"[OK] Processed {len(t)} frames. saved: g1_amp_traj.npy")
 
 if __name__ == "__main__":
